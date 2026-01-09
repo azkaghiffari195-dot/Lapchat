@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Firebase Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body {
+  margin: 0;
+  font-family: sans-serif;
+  background: #111;
+  color: white;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+#top {
+  padding: 10px;
+  background: #1c1c1c;
+  font-size: 14px;
+}
+#messages {
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+}
+.msg {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: #222;
+  border-radius: 8px;
+}
+.name {
+  font-weight: bold;
+  color: #00ff99;
+}
+#typing {
+  font-size: 12px;
+  color: #aaa;
+  padding-left: 10px;
+}
+#bar {
+  display: flex;
+}
+input, button {
+  padding: 10px;
+  font-size: 16px;
+  border: none;
+}
+#input {
+  flex: 1;
+}
+#send {
+  background: #00ff99;
+}
+</style>
+</head>
+
+<body>
+
+<div id="top">
+  🟢 Online: <span id="onlineCount">0</span>
+</div>
+
+<div id="messages"></div>
+<div id="typing"></div>
+
+<div id="bar">
+  <input id="input" placeholder="Ketik pesan...">
+  <button id="send">Send</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+// 🔥 GANTI CONFIG FIREBASE KAMU
+var firebaseConfig = {
+  apiKey: "ISI_API_KEY",
+  authDomain: "ISI_AUTH_DOMAIN",
+  databaseURL: "ISI_DATABASE_URL",
+  projectId: "ISI_PROJECT_ID",
+};
+
+firebase.initializeApp(firebaseConfig);
+var db = firebase.database();
+
+const messagesRef = db.ref("messages");
+const usersRef = db.ref("users");
+const typingRef = db.ref("typing");
+
+const messagesDiv = document.getElementById("messages");
+const input = document.getElementById("input");
+const typingDiv = document.getElementById("typing");
+const onlineCountSpan = document.getElementById("onlineCount");
+
+// === USER ===
+let username = localStorage.getItem("username");
+if (!username) {
+  username = prompt("Masukkan nama kamu:");
+  localStorage.setItem("username", username);
+}
+
+const userId = Date.now() + "_" + Math.random().toString(36).substr(2);
+const myUserRef = usersRef.child(userId);
+
+// ONLINE STATUS
+myUserRef.set({ name: username });
+myUserRef.onDisconnect().remove();
+
+// HITUNG ONLINE
+usersRef.on("value", snap => {
+  onlineCountSpan.innerText = snap.numChildren();
+});
+
+// KIRIM PESAN
+document.getElementById("send").onclick = sendMessage;
+
+function sendMessage() {
+  if (input.value.trim() === "") return;
+  messagesRef.push({
+    name: username,
+    text: input.value,
+    time: Date.now()
+  });
+  input.value = "";
+  typingRef.child(userId).remove();
+}
+
+// TAMPILKAN PESAN
+messagesRef.limitToLast(50).on("child_added", snap => {
+  const data = snap.val();
+  const div = document.createElement("div");
+  div.className = "msg";
+  div.innerHTML = `<span class="name">${data.name}</span>: ${data.text}`;
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+});
+
+// LAGI NGETIK
+input.addEventListener("input", () => {
+  typingRef.child(userId).set(username);
+  setTimeout(() => typingRef.child(userId).remove(), 1500);
+});
+
+typingRef.on("value", snap => {
+  const users = snap.val();
+  if (!users) {
+    typingDiv.innerText = "";
+    return;
+  }
+  const names = Object.values(users).filter(n => n !== username);
+  typingDiv.innerText = names.length ? `${names.join(", ")} lagi ngetik...` : "";
+});
+</script>
+
+</body>
+</html>
