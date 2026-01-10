@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LapChat</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui, sans-serif;
+  background:#0b141a;
+  color:white;
+  height:100vh;
+}
+
+/* LOGIN */
+#login{
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+}
+#login input{
+  padding:12px;
+  width:80%;
+  max-width:300px;
+  border:none;
+  border-radius:8px;
+  font-size:16px;
+}
+#login button{
+  margin-top:10px;
+  padding:12px 20px;
+  border:none;
+  border-radius:8px;
+  background:#25d366;
+  font-size:16px;
+}
+
+/* CHAT */
+#chat{
+  display:none;
+  height:100vh;
+  flex-direction:column;
+}
+#header{
+  background:#202c33;
+  padding:10px;
+  font-weight:bold;
+  font-size:14px;
+}
+#messages{
+  flex:1;
+  padding:10px;
+  overflow-y:auto;
+}
+.msg{
+  max-width:75%;
+  padding:8px 12px;
+  margin-bottom:6px;
+  border-radius:10px;
+  font-size:14px;
+  word-wrap:break-word;
+}
+.me{
+  background:#005c4b;
+  margin-left:auto;
+  border-bottom-right-radius:0;
+}
+.other{
+  background:#202c33;
+  margin-right:auto;
+  border-bottom-left-radius:0;
+}
+.name{
+  font-size:11px;
+  opacity:.7;
+}
+#typing{
+  font-size:12px;
+  padding-left:10px;
+  color:#aaa;
+}
+#inputBar{
+  display:flex;
+  padding:8px;
+  background:#202c33;
+}
+#inputBar input{
+  flex:1;
+  padding:10px;
+  border:none;
+  border-radius:20px;
+}
+#inputBar button{
+  margin-left:6px;
+  padding:10px 16px;
+  border:none;
+  border-radius:50%;
+  background:#25d366;
+}
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <h2>LapChat 💬</h2>
+  <input id="usernameInput" placeholder="Masukkan username">
+  <button onclick="startChat()">Masuk</button>
+</div>
+
+<!-- CHAT -->
+<div id="chat">
+  <div id="header">🟢 Online: <span id="online">0</span></div>
+  <div id="messages"></div>
+  <div id="typing"></div>
+  <div id="inputBar">
+    <input id="msgInput" placeholder="Ketik pesan...">
+    <button onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+// 🔴 GANTI CONFIG KAMU
+var firebaseConfig = {
+  apiKey: "ISI_API_KEY",
+  authDomain: "ISI_AUTH_DOMAIN",
+  databaseURL: "https://NAMA-PROJECT-default-rtdb.firebaseio.com",
+  projectId: "ISI_PROJECT_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+var db = firebase.database();
+
+const messagesRef = db.ref("messages");
+const usersRef = db.ref("users");
+const typingRef = db.ref("typing");
+
+let username = localStorage.getItem("lapchat_name");
+let userId = Date.now() + "_" + Math.random().toString(36).slice(2);
+
+const login = document.getElementById("login");
+const chat = document.getElementById("chat");
+const messagesDiv = document.getElementById("messages");
+const typingDiv = document.getElementById("typing");
+const onlineSpan = document.getElementById("online");
+const msgInput = document.getElementById("msgInput");
+
+if(username){
+  startChat();
+}
+
+function startChat(){
+  const input = document.getElementById("usernameInput");
+  if(!username){
+    if(!input.value.trim()) return;
+    username = input.value.trim();
+    localStorage.setItem("lapchat_name", username);
+  }
+
+  login.style.display="none";
+  chat.style.display="flex";
+
+  const myRef = usersRef.child(userId);
+  myRef.set(username);
+  myRef.onDisconnect().remove();
+
+  usersRef.on("value", s=>{
+    onlineSpan.textContent = s.numChildren();
+  });
+
+  messagesRef.limitToLast(100).on("child_added", s=>{
+    const d = s.val();
+    const div = document.createElement("div");
+    div.className = "msg " + (d.name===username ? "me":"other");
+    div.innerHTML = d.name===username
+      ? d.text
+      : `<div class="name">${d.name}</div>${d.text}`;
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
+}
+
+function sendMessage(){
+  if(!msgInput.value.trim()) return;
+  messagesRef.push({
+    name: username,
+    text: msgInput.value,
+    time: Date.now()
+  });
+  msgInput.value="";
+  typingRef.child(userId).remove();
+}
+
+msgInput.addEventListener("input", ()=>{
+  typingRef.child(userId).set(username);
+  setTimeout(()=>typingRef.child(userId).remove(),1500);
+});
+
+typingRef.on("value", s=>{
+  if(!s.val()){ typingDiv.textContent=""; return;}
+  const names = Object.values(s.val()).filter(n=>n!==username);
+  typingDiv.textContent = names.length ? names.join(", ")+" lagi ngetik..." : "";
+});
+</script>
+
+</body>
+</html>
