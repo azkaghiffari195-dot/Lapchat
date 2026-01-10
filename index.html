@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LapChat</title>
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="logo.png">
+<meta name="theme-color" content="#00a884">
+
+<style>
+:root{
+  --bg:#0b141a;
+  --panel:#202c33;
+  --input:#2a3942;
+  --me:#005c4b;
+  --other:#2a3942;
+  --text:#e9edef;
+}
+.light{
+  --bg:#efeae2;
+  --panel:#fff;
+  --input:#f0f2f5;
+  --me:#dcf8c6;
+  --other:#fff;
+  --text:#000;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+
+/* screens */
+.screen{display:none;height:100vh}
+.screen.active{display:flex;flex-direction:column}
+.center{justify-content:center;padding:20px}
+
+/* input & button */
+input,button{
+  padding:14px;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+  margin-top:10px;
+}
+button{background:#00a884;color:white}
+
+/* header */
+#header{
+  background:var(--panel);
+  padding:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+#typing{font-size:12px;opacity:.7}
+
+/* messages */
+#messages{
+  flex:1;
+  padding:12px;
+  overflow-y:auto;
+}
+.msg{
+  max-width:75%;
+  padding:8px 10px;
+  border-radius:12px;
+  margin-bottom:6px;
+  font-size:14px;
+  animation:pop .15s ease-out;
+}
+@keyframes pop{
+  from{transform:scale(.95);opacity:.5}
+  to{transform:scale(1);opacity:1}
+}
+.msg .name{
+  font-size:11px;
+  opacity:.6;
+  margin-bottom:2px;
+}
+.me{
+  background:var(--me);
+  margin-left:auto;
+  border-bottom-right-radius:2px;
+}
+.other{
+  background:var(--other);
+  border-bottom-left-radius:2px;
+}
+
+/* input bar */
+#inputBar{
+  background:var(--panel);
+  padding:8px;
+  display:flex;
+}
+#text{
+  flex:1;
+  background:var(--input);
+  color:var(--text);
+  border:none;
+  border-radius:20px;
+  padding:12px;
+}
+#send{
+  margin-left:8px;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  font-size:18px;
+}
+
+/* popup */
+#popup{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.5);
+  display:none;
+  justify-content:center;
+  align-items:center;
+}
+#popupContent{
+  background:var(--panel);
+  padding:20px;
+  border-radius:10px;
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login" class="screen active center">
+  <h2>LapChat</h2>
+  <input id="username" placeholder="Username">
+  <button onclick="saveName()">Masuk</button>
+</div>
+
+<!-- MENU -->
+<div id="menu" class="screen center">
+  <button onclick="createRoom()">➕ Make New Chat</button>
+  <input id="roomInput" placeholder="Kode Room 6 angka">
+  <button onclick="joinRoom()">🔑 Join Chat</button>
+</div>
+
+<!-- CHAT -->
+<div id="chat" class="screen">
+  <div id="header">
+    <div>
+      <b>Room <span id="roomCode"></span></b>
+      <div id="typing"></div>
+    </div>
+    <div>
+      <button onclick="toggleTheme()">🌙</button>
+      <button onclick="showMembers()">👥</button>
+    </div>
+  </div>
+
+  <div id="messages"></div>
+
+  <div id="inputBar">
+    <input id="text" placeholder="Ketik pesan..." oninput="typingStatus()">
+    <button id="send" onclick="send()">➤</button>
+  </div>
+</div>
+
+<!-- POPUP -->
+<div id="popup">
+  <div id="popupContent">
+    <h3>Online</h3>
+    <div id="memberList"></div>
+    <button onclick="popup.style.display='none'">Close</button>
+  </div>
+</div>
+
+<audio id="notif">
+  <source src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3">
+</audio>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import {
+  getDatabase, ref, push, onChildAdded,
+  set, onValue, onDisconnect
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+/* 🔥 GANTI API KEY KAMU 🔥 */
+const firebaseConfig = {
+  apiKey: "AIzaSyBVJAihlYHvy2IZOwg_qQ0WPgP1AdYrHxQ",
+  authDomain: "lapchat-6cb5e.firebaseapp.com",
+  databaseURL: "https://lapchat-6cb5e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "lapchat-6cb5e"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+let name="", room="";
+
+/* theme */
+if(localStorage.theme==="light") document.body.classList.add("light");
+window.toggleTheme=()=>{
+  document.body.classList.toggle("light");
+  localStorage.theme=document.body.classList.contains("light")?"light":"dark";
+};
+
+/* navigation */
+function show(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+/* login */
+window.saveName=()=>{
+  name=username.value.trim();
+  if(!name) return;
+  Notification.requestPermission();
+  show("menu");
+};
+
+/* room */
+window.createRoom=()=>{
+  room=Math.floor(100000+Math.random()*900000).toString();
+  enterRoom();
+};
+window.joinRoom=()=>{
+  room=roomInput.value.trim();
+  if(room.length!==6) return alert("Kode salah");
+  enterRoom();
+};
+
+function enterRoom(){
+  roomCode.textContent=room;
+  show("chat");
+
+  onChildAdded(ref(db,`rooms/${room}/messages`),snap=>{
+    const d=snap.val();
+    const div=document.createElement("div");
+    div.className="msg "+(d.name===name?"me":"other");
+    div.innerHTML=`
+      <div class="name">${d.name}</div>
+      <div>${d.text}</div>
+    `;
+    messages.appendChild(div);
+    messages.scrollTop=messages.scrollHeight;
+
+    if(d.name!==name){
+      notif.play();
+      if(document.hidden && Notification.permission==="granted"){
+        new Notification(d.name,{body:d.text});
+      }
+    }
+  });
+
+  const userRef=ref(db,`rooms/${room}/users/${name}`);
+  set(userRef,true);
+  onDisconnect(userRef).remove();
+
+  onValue(ref(db,`rooms/${room}/users`),snap=>{
+    const u=snap.val()||{};
+    memberList.innerHTML=Object.keys(u).map(x=>"• "+x).join("<br>");
+  });
+
+  onValue(ref(db,`rooms/${room}/typing`),snap=>{
+    const t=snap.val()||{};
+    const typingUsers=Object.keys(t).filter(u=>t[u]&&u!==name);
+    typing.textContent=typingUsers.length
+      ? typingUsers.join(", ")+" lagi ngetik..."
+      : "";
+  });
+}
+
+/* chat */
+window.send=()=>{
+  if(!text.value) return;
+  push(ref(db,`rooms/${room}/messages`),{
+    name,text:text.value,time:Date.now()
+  });
+  set(ref(db,`rooms/${room}/typing/${name}`),false);
+  text.value="";
+};
+
+/* typing multi user */
+window.typingStatus=()=>{
+  set(ref(db,`rooms/${room}/typing/${name}`),true);
+  setTimeout(()=>set(ref(db,`rooms/${room}/typing/${name}`),false),1500);
+};
+
+window.showMembers=()=>popup.style.display="flex";
+
+/* PWA */
+if("serviceWorker"in navigator){
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+
+</body>
+</html>
